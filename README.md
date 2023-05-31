@@ -1,2 +1,2 @@
-# automated-cloud-infra-deploy-using-alexa
-This is Sample demonstrate how to uses alexa to automatic deploy your AWS Cloud infra, for Disaster Recovery cenarius, just using command voice
+# Automated EC2 Isolation For Incident Response
+This Sample demonstrates how to deploy a solution for automatic isolation of compromised EC2 instances.
