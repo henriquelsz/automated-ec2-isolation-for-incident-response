@@ -2,6 +2,7 @@ from aws_cdk import (
     Duration,
     Stack,
     aws_events as eventBridge,
+    aws_events_targets as targets, 
     aws_lambda as lambda_,
     aws_iam as iam,
     triggers,
@@ -15,12 +16,12 @@ class CdkDeployForIsolatedEc2Stack(Stack):
         super().__init__(scope, construct_id, **kwargs)
 
         lambdaIsolation = lambda_.Function(self, "LambdaForIsolation",
-                runtime = lambda_.Runtime.PYTHON_3_10,
+                runtime = lambda_.Runtime.PYTHON_3_9,
                 handler = "ec2_isolation.lambda_handler",
                 code = lambda_.Code.from_asset(path.join("functions")),
         )
 
-        lambdaStream.add_to_role_policy(iam.PolicyStatement(
+        lambdaIsolation.add_to_role_policy(iam.PolicyStatement(
             effect=iam.Effect.ALLOW,
             actions=[
                 'ec2:*',
@@ -33,15 +34,16 @@ class CdkDeployForIsolatedEc2Stack(Stack):
 
         
         broker = eventBridge.Rule(self, "guardduty-broker-lambda",
-                         event_pattern=events.EventPattern(
+                         event_pattern=eventBridge.EventPattern(
                                 source=["aws.guardduty"]  
                             )
                          )
         broker.add_target(targets.LambdaFunction(lambdaIsolation, retry_attempts=2))
-        
+        '''
         trigger = triggers.Trigger(self, "MyTrigger",
-            handler=function_,
+            handler=lambdaIsolation,
 
             # the properties below are optional
             execute_after=[broker]
         )
+        '''
