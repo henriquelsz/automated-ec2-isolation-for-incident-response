@@ -16,7 +16,7 @@ class CdkDeployForIsolatedEc2Stack(Stack):
         super().__init__(scope, construct_id, **kwargs)
 
         #creating a new secret
-        ip_address = "177.72.241.20"  # Replace with your desired IP address
+        ip_address = "0.0.0.0"  # Replace with your desired IP address
 
         cfn_secret = secretsmanager.CfnSecret(self, "MyCfnSecret",                                
             name="SecretIpForense",
@@ -29,6 +29,7 @@ class CdkDeployForIsolatedEc2Stack(Stack):
                 runtime = lambda_.Runtime.PYTHON_3_9,
                 handler = "ec2_isolation.lambda_handler",
                 code = lambda_.Code.from_asset(path.join("functions")),
+                timeout = 7,
         )
 
         #adding the iam roles 
