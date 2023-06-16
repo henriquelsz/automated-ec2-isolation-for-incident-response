@@ -139,6 +139,8 @@ def lambda_handler(event, context):
     vpcID = identifyInstanceVpcId(instanceID)
     unique_id = str(uuid.uuid4())
     IP = get_secret()
+    instanceAttributes = ec2Client.describe_instances(InstanceIds=[instanceID])
+    networkInterfaceID = instanceAttributes['Reservations'][0]['Instances'][0]['NetworkInterfaces'][0]['NetworkInterfaceId']
     #detaching from an ASG
     detachASG(instanceID)
     #blocking ec2 termination
@@ -149,14 +151,14 @@ def lambda_handler(event, context):
     #untracking security group 
     untrackSecurityGroup(untrackSG)
     #attaching the new security group on ec2 instance
-    ec2Client.modify_instance_attribute(InstanceId=instanceID, Groups=[untrackSG['GroupId']])
+    ec2Client.modify_network_interface_attribute(NetworkInterfaceId=networkInterfaceID, Groups=[untrackSG['GroupId']])
     
     #creating a new security group for tracking
     trackSG = createSecurityGroup(vpcID, unique_id)
     trackSecurityGroup(trackSG, IP)
     
     #attaching the track security group with no inbound rules and deleting the untrack securitygroup
-    ec2Client.modify_instance_attribute(InstanceId=instanceID, Groups=[trackSG['GroupId']])  
+    ec2Client.modify_network_interface_attribute(NetworkInterfaceId=networkInterfaceID, Groups=[trackSG['GroupId']])  
     ec2Client.delete_security_group(GroupId=untrackSG['GroupId'])
     
     return {
