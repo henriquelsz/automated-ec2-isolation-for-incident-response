@@ -1,38 +1,13 @@
 import json
 import boto3
-import os 
 import uuid
+import time
 from botocore.exceptions import ClientError
-import botocore.session
 
 ec2Client = boto3.client('ec2')
 asgClient = boto3.client('autoscaling')
-session = boto3.session.Session()
 
-#return the secret ip for forense
-def get_secret():
 
-    secret_name = "SecretIpForense"
-    region_name = session.region_name
-
-    
-    client = session.client(
-        service_name='secretsmanager',
-        region_name=region_name
-    )
-
-    try:
-        get_secret_value_response = client.get_secret_value(
-            SecretId=secret_name
-        )
-    except ClientError as e:
-        # For a list of exceptions thrown, see
-        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
-        raise e
-
-    # Decrypts secret using the associated KMS key.
-    secret = get_secret_value_response['SecretString']
-    return secret
 
 #Identify which is the VPC Id of the compromised instance 
 def identifyInstanceVpcId(instanceId):
@@ -116,50 +91,61 @@ def untrackSecurityGroup(securityGroup):
         ],
     )
 
-def trackSecurityGroup(securityGroup, ip):
-    ec2Client.authorize_security_group_ingress(
-        GroupId=securityGroup['GroupId'],
-        IpPermissions=[
-            {
-                'FromPort': 22,
-                'IpProtocol': 'tcp',
-                'IpRanges': [
-                    {
-                        'CidrIp': '{}/32'.format(ip),
-                        'Description': 'SSH tracked access',
-                    },
-                ],
-                'ToPort': 22,
-            },
-        ],
-    )
+    
+def revokeOutRules(boolean, sgID):
+    if boolean == 0:
+        ec2Client.revoke_security_group_egress(
+            GroupId=sgID,
+            IpPermissions=[
+                {
+                    'IpProtocol': '-1',  # All protocols
+                    'IpRanges': [
+                        {
+                            'CidrIp': '0.0.0.0/0' 
+                        }
+                    ]
+                }
+            ]
+        )
 
 def lambda_handler(event, context):
     instanceID = event['detail']['resource']['instanceDetails']['instanceId']
     vpcID = identifyInstanceVpcId(instanceID)
     unique_id = str(uuid.uuid4())
-    IP = get_secret()
     instanceAttributes = ec2Client.describe_instances(InstanceIds=[instanceID])
     networkInterfaceID = instanceAttributes['Reservations'][0]['Instances'][0]['NetworkInterfaces'][0]['NetworkInterfaceId']
+    
     #detaching from an ASG
     detachASG(instanceID)
+    
     #blocking ec2 termination
     setTerminationProtection(instanceID)
 
     #creating a new security group for untracking
     untrackSG = createSecurityGroup(vpcID, 'tmp')
+    
     #untracking security group 
     untrackSecurityGroup(untrackSG)
-    #attaching the new security group on ec2 instance
-    ec2Client.modify_network_interface_attribute(NetworkInterfaceId=networkInterfaceID, Groups=[untrackSG['GroupId']])
+    
     
     #creating a new security group for tracking
     trackSG = createSecurityGroup(vpcID, unique_id)
-    trackSecurityGroup(trackSG, IP)
     
-    #attaching the track security group with no inbound rules and deleting the untrack securitygroup
+    #revoking the outbound rules of the new security group to end the comunication with anything
+    revokeOutRules(0, trackSG['GroupId'])
+    
+    #attaching the untrack security group on ec2 instance
+    ec2Client.modify_network_interface_attribute(NetworkInterfaceId=networkInterfaceID, Groups=[untrackSG['GroupId']])
+    
+    time.sleep(180)
+    
+    #attaching the track security group with no inbound and outbound rules
     ec2Client.modify_network_interface_attribute(NetworkInterfaceId=networkInterfaceID, Groups=[trackSG['GroupId']])  
+    
+    #deleting the untrack securitygroup
     ec2Client.delete_security_group(GroupId=untrackSG['GroupId'])
+    
+    
     
     return {
         'statusCode': 200,
